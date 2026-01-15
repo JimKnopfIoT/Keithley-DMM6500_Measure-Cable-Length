@@ -18,11 +18,11 @@ local AWG_DATA = {
     [9] = {mm2 = 6.631, metric_eq = nil, res_per_km = 2.70},
     [10] = {mm2 = 5.261, metric_eq = "6", res_per_km = 3.41},
     [11] = {mm2 = 4.17, metric_eq = nil, res_per_km = 4.3},
-    [12] = {mm2 = 3.31, metric_eq = "4", res_per_km = 12.90},  -- Calibrated: 9.28m cable measured 0.2395Ω
+    [12] = {mm2 = 3.31, metric_eq = "4", res_per_km = 12.90},  -- Calibrated: 9.28m cable measured 0.2395Ohm
     [13] = {mm2 = 2.63, metric_eq = nil, res_per_km = 6.82},
     [14] = {mm2 = 2.08, metric_eq = "2.5", res_per_km = 8.6},
     [15] = {mm2 = 1.65, metric_eq = nil, res_per_km = 10.9},
-    [16] = {mm2 = 1.31, metric_eq = "1.5", res_per_km = 13.7},
+    [16] = {mm2 = 1.31, metric_eq = "1.5", res_per_km = 13.1},  -- Calibrated: 7m cable measured 0.184Ohm
     [17] = {mm2 = 1.04, metric_eq = nil, res_per_km = 17.3},
     [18] = {mm2 = 0.823, metric_eq = "1", res_per_km = 21.9},
     [19] = {mm2 = 0.653, metric_eq = "0.75", res_per_km = 27.4},
@@ -39,8 +39,8 @@ local AWG_DATA = {
 
 -- Cable types with typical capacitance values
 local CABLE_TYPES = {
-    -- Power Cables
-    ["Power Cu"] = {cap_per_m = 60e-12, desc = "Power cable", category = "Power"},
+    -- Power Cables (calibrated with 7m test cable: 693.2pF measured)
+    ["Power Cu"] = {cap_per_m = 99e-12, desc = "Power cable", category = "Power"},
 
     -- Speaker Wires (calibrated with 9.28m test cable: 576.8pF measured)
     ["Speaker"] = {cap_per_m = 62.16e-12, desc = "Speaker cable", category = "Speaker"},
@@ -51,9 +51,9 @@ local CABLE_TYPES = {
     ["Cat7"] = {cap_per_m = 50e-12, desc = "Ethernet Cat7", category = "TP"},
 
     -- Coaxial
-    ["RG-58"] = {cap_per_m = 101e-12, desc = "Coax 50Ω", category = "Coax"},
-    ["RG-6"] = {cap_per_m = 67e-12, desc = "Coax 75Ω", category = "Coax"},
-    ["RG-59"] = {cap_per_m = 67e-12, desc = "Coax 75Ω", category = "Coax"},
+    ["RG-58"] = {cap_per_m = 101e-12, desc = "Coax 50Ohm", category = "Coax"},
+    ["RG-6"] = {cap_per_m = 67e-12, desc = "Coax 75Ohm", category = "Coax"},
+    ["RG-59"] = {cap_per_m = 67e-12, desc = "Coax 75Ohm", category = "Coax"},
 }
 
 -- Current configuration (will be set by user)
@@ -61,6 +61,15 @@ local AWG = 11
 local CABLE_TYPE = "Power Cu"
 local CAP_PER_M = 60e-12
 local RES_PER_M = 0.0043  -- Will be set from AWG_DATA
+
+-- CABLE-SPECIFIC RESISTANCE CORRECTION
+-- This offset compensates for contact resistance, solder joints, connectors, etc.
+-- It is subtracted from the measured resistance before calculating cable length.
+-- Calibrated with 7.0m test cable: adjusted to match capacitance measurement
+-- Base resistance formula: R = 2 * RES_PER_M * Length (factor 2 for two-wire measurement)
+-- NOTE: This is a CALIBRATION value specific to this cable/setup, NOT a change to AWG specs
+-- Calibration history: 0.026 (bad contact) -> 0.015 -> 0.0 (after fixing contact)
+local CABLE_RES_OFFSET = 0.0  -- Ohm - subtract from measured resistance
 
 -- UI elements
 local ui = {}
@@ -72,6 +81,13 @@ local initial_screen = display.SCREEN_HOME  -- Assume we start from home
 -- Simple success beep
 function success_beep()
     beeper.beep(0.1, 1200)
+end
+
+-- Helper function: Format number with German decimal separator (comma instead of dot)
+function format_german(num, decimals)
+    local fmt = string.format("%%.%df", decimals)
+    local str = string.format(fmt, num)
+    return string.gsub(str, "%.", ",")
 end
 
 -- Configuration screen with dropdown selections
@@ -89,7 +105,7 @@ function config_screen()
         "Power Cu", "Speaker", "Cat5e", "Cat6", "Cat7", "RG-58", "RG-6", "RG-59")
 
     -- AWG Selection
-    display.create(ui.config, display.OBJ_TEXT, 30, 190, "Wire Gauge (AWG / mm² / metric):", 0x00FFFF, display.FONT_MEDIUM)
+    display.create(ui.config, display.OBJ_TEXT, 30, 190, "Wire Gauge (AWG / mm2 / metric):", 0x00FFFF, display.FONT_MEDIUM)
     ui.awg_select = display.create(ui.config, display.OBJ_EDIT_OPTION, 30, 220,
         " ", " ",
         "AWG 10 (5.3/6)", "AWG 12 (3.3/4)", "AWG 14 (2.1/2.5)",
@@ -172,18 +188,18 @@ function create_results_screen(cap, r_short, length_cap, length_res, avg, diff, 
 
     -- Measured Capacitance
     display.create(ui.screen, display.OBJ_TEXT, 30, 100, "Measured Cap:", 0x00FFFF, display.FONT_SMALL)
-    display.create(ui.screen, display.OBJ_TEXT, 200, 100, string.format("%.4f nF", cap * 1e9), 0xFFFFFF, display.FONT_MEDIUM)
+    display.create(ui.screen, display.OBJ_TEXT, 200, 100, format_german(cap * 1e9, 4) .. " nF", 0xFFFFFF, display.FONT_MEDIUM)
 
     -- Cable Specs (get from AWG_DATA)
     local mm2 = AWG_DATA[AWG] and AWG_DATA[AWG].mm2 or 0
     local metric_eq = AWG_DATA[AWG] and AWG_DATA[AWG].metric_eq or nil
     local cable_spec
     if metric_eq then
-        cable_spec = string.format("AWG %d (%.1fmm²/%s) %s | %.1fpF/m %.4fΩ/m",
-            AWG, mm2, metric_eq, CABLE_TYPE, CAP_PER_M * 1e12, RES_PER_M)
+        cable_spec = string.format("AWG %d (%smm2/%s) %s | %spF/m %sOhm/m",
+            AWG, format_german(mm2, 1), metric_eq, CABLE_TYPE, format_german(CAP_PER_M * 1e12, 1), format_german(RES_PER_M, 4))
     else
-        cable_spec = string.format("AWG %d (%.1fmm²) %s | %.1fpF/m %.4fΩ/m",
-            AWG, mm2, CABLE_TYPE, CAP_PER_M * 1e12, RES_PER_M)
+        cable_spec = string.format("AWG %d (%smm2) %s | %spF/m %sOhm/m",
+            AWG, format_german(mm2, 1), CABLE_TYPE, format_german(CAP_PER_M * 1e12, 1), format_german(RES_PER_M, 4))
     end
     display.create(ui.screen, display.OBJ_TEXT, 30, 125, cable_spec, 0xFFFF00, display.FONT_SMALL)
 
@@ -192,12 +208,12 @@ function create_results_screen(cap, r_short, length_cap, length_res, avg, diff, 
 
     -- From Capacitance
     display.create(ui.screen, display.OBJ_TEXT, 30, 200, "From Capacitance:", 0xFFFF00, display.FONT_MEDIUM)
-    display.create(ui.screen, display.OBJ_TEXT, 350, 200, string.format("%.3f m", length_cap), 0xFFFFFF, display.FONT_LARGE)
+    display.create(ui.screen, display.OBJ_TEXT, 350, 200, format_german(length_cap, 3) .. " m", 0xFFFFFF, display.FONT_LARGE)
 
     -- From Resistance (show N/A if skipped)
     display.create(ui.screen, display.OBJ_TEXT, 30, 240, "From Resistance:", 0xFFFF00, display.FONT_MEDIUM)
     if length_res ~= nil then
-        display.create(ui.screen, display.OBJ_TEXT, 350, 240, string.format("%.3f m", length_res), 0xFFFFFF, display.FONT_LARGE)
+        display.create(ui.screen, display.OBJ_TEXT, 350, 240, format_german(length_res, 3) .. " m", 0xFFFFFF, display.FONT_LARGE)
     else
         display.create(ui.screen, display.OBJ_TEXT, 350, 240, "N/A", 0x808080, display.FONT_LARGE)
     end
@@ -215,23 +231,26 @@ function create_results_screen(cap, r_short, length_cap, length_res, avg, diff, 
     else
         display.create(ui.screen, display.OBJ_TEXT, 30, 290, "RESULT:", 0xFFFF00, display.FONT_LARGE)
     end
-    display.create(ui.screen, display.OBJ_TEXT, 350, 290, string.format("%.3f m", avg), avg_color, display.FONT_LARGE)
+    display.create(ui.screen, display.OBJ_TEXT, 350, 290, format_german(avg, 3) .. " m", avg_color, display.FONT_LARGE)
 
-    -- Difference (only if resistance was measured)
+    -- Difference (only if resistance was measured) - using SMALL font to save space
     if diff_pct ~= nil then
-        display.create(ui.screen, display.OBJ_TEXT, 30, 340, string.format("Difference: %.2f%% (%.3f m)", diff_pct, diff), 0xFFFFFF, display.FONT_MEDIUM)
+        display.create(ui.screen, display.OBJ_TEXT, 30, 320, "Diff: " .. format_german(diff_pct, 2) .. "% (" .. format_german(diff, 3) .. "m)", 0xFFFFFF, display.FONT_SMALL)
     else
-        display.create(ui.screen, display.OBJ_TEXT, 30, 340, "Resistance measurement skipped", 0x808080, display.FONT_SMALL)
+        display.create(ui.screen, display.OBJ_TEXT, 30, 320, "Resistance skipped", 0x808080, display.FONT_SMALL)
     end
 
-    -- Repeat and Exit buttons
+    -- Countdown text (will be updated in main loop) - positioned at bottom
+    ui.countdown_text = display.create(ui.screen, display.OBJ_TEXT, 30, 340, "Exit: 180s", 0x808080, display.FONT_SMALL)
+
+    -- Repeat and Exit buttons (Y max is 374, leave some margin)
     ui.repeat_btn = display.create(ui.screen, display.OBJ_BUTTON, 450, 360, "Repeat")
     ui.exit_btn = display.create(ui.screen, display.OBJ_BUTTON, 600, 360, "Exit")
 
     display.changescreen(ui.screen)
 
-    -- Return both button IDs for event handling
-    return ui.repeat_btn, ui.exit_btn
+    -- Return button IDs and countdown text for event handling
+    return ui.repeat_btn, ui.exit_btn, ui.countdown_text
 end
 
 -- Status display - use simple settext
@@ -401,7 +420,11 @@ function main()
         delay(0.5)
 
         r_short = dmm.measure.read()
-        length_res = r_short / (2 * RES_PER_M)
+
+        -- Apply cable-specific resistance correction (compensates for contact resistance, poor quality cable, etc.)
+        -- The AWG resistance value (RES_PER_M) remains unchanged - this is only a measurement correction
+        local r_corrected = r_short - CABLE_RES_OFFSET
+        length_res = r_corrected / (2 * RES_PER_M)
 
         show_status(string.format("R:%.2fOhm", r_short), string.format("Length: %.1fm", length_res))
         success_beep()
@@ -443,14 +466,30 @@ function main()
     end
 
     -- Create and show results screen with all values
-    local repeat_btn, exit_btn = create_results_screen(cap, r_short, length_cap, length_res, avg, diff, diff_pct)
+    local repeat_btn, exit_btn, countdown_text = create_results_screen(cap, r_short, length_cap, length_res, avg, diff, diff_pct)
 
     -- Show completion message
-    print("\nTest complete. Press Repeat, Exit, or wait 60 seconds...")
+    print("\nTest complete. Press Repeat, Exit, or wait 180 seconds...")
 
-    -- Wait for button or timeout (60 seconds)
+    -- Wait for button or timeout (180 seconds = 3 minutes) with countdown
+    local timeout_seconds = 180
     local elapsed = 0
-    while elapsed < 60 do
+    while elapsed < timeout_seconds do
+        local remaining = timeout_seconds - elapsed
+
+        -- Update countdown display (only if countdown_text exists)
+        if countdown_text ~= nil then
+            local countdown_msg
+            if remaining > 60 then
+                local minutes = math.floor(remaining / 60)
+                local seconds = remaining - (minutes * 60)
+                countdown_msg = string.format("Exit: %d:%02d", minutes, seconds)
+            else
+                countdown_msg = string.format("Exit: %ds", remaining)
+            end
+            display.settext(countdown_text, countdown_msg)
+        end
+
         local id = display.waitevent(1)  -- 1 second timeout
         if id == exit_btn then
             print("\nExit button pressed - ending script")
@@ -505,7 +544,7 @@ print("════════════════════════�
 
 -- Return to HOME screen BEFORE reset (prevents black screen)
 display.changescreen(display.SCREEN_HOME)
-delay(0.5)
+delay(5)  -- Wait 5 seconds before reset so user can see the screen
 
 -- Reset to restore normal operation
 reset()
