@@ -21,12 +21,13 @@ Keep in mind, on DMM6500 and DMM7510 after exiting a script, it is in IDLE Mode 
 <img src="Bildschirmfoto vom 2026-01-14 20-37-25.jpg" width="220">
 </p>  
 <p align="center">
+<img src="Bildschirmfoto vom 2026-01-14 20-38-54.jpg" width="220">
 <img src="Bildschirmfoto vom 2026-01-14 20-37-38.jpg" width="220"> 
 <img src="Bildschirmfoto vom 2026-01-14 20-37-53.jpg" width="220">
-<img src="Bildschirmfoto vom 2026-01-14 20-38-25.jpg" width="220">
+
 </p>  
 <p align="center">
-<img src="Bildschirmfoto vom 2026-01-14 20-38-54.jpg" width="220">
+<img src="Bildschirmfoto vom 2026-01-14 20-38-25.jpg" width="220">
 <img src="Bildschirmfoto vom 2026-01-14 20-39-30.jpg" width="220"
 <img src="Bildschirmfoto vom 2026-01-14 20-39-50.jpg" width="220">
 </p>  
